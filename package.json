@@ -1,0 +1,17 @@
+{
+  "name": "gmail-telegram-notifier",
+  "version": "1.0.0",
+  "description": "Gmail to Telegram notification system using Cloudflare Workers",
+  "main": "src/index.ts",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "dependencies": {
+    "@cloudflare/workers-types": "^4.20240208.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "wrangler": "^3.28.1"
+  }
+} 

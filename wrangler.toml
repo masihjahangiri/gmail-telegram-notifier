@@ -1,0 +1,9 @@
+name = "gmail-telegram-notifier"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+# These will be overridden by secrets
+TELEGRAM_TOKEN = ""
+TELEGRAM_CHAT_ID = ""
+ACCESS_KEY = "" 
