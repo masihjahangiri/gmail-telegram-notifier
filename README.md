@@ -20,7 +20,14 @@ A serverless system that sends Telegram notifications for new Gmail messages usi
 
 ## Setup Instructions
 
-### 1. Cloudflare Worker Setup
+### 1. Get Your Telegram Chat ID
+
+1. Start a chat with [@userinfobot](https://t.me/userinfobot) on Telegram
+2. Send any message to the bot
+3. The bot will reply with your chat ID
+4. Save this ID - you'll need it for the Cloudflare Worker setup
+
+### 2. Cloudflare Worker Setup
 
 1. Install Wrangler CLI:
    ```bash
@@ -43,6 +50,10 @@ A serverless system that sends Telegram notifications for new Gmail messages usi
    wrangler secret put TELEGRAM_CHAT_ID
    wrangler secret put ACCESS_KEY
    ```
+   When prompted:
+   - Enter your bot token from @BotFather
+   - Enter your chat ID from @userinfobot
+   - Create and enter a secure access key
 
 5. Deploy the worker:
    ```bash
@@ -51,7 +62,7 @@ A serverless system that sends Telegram notifications for new Gmail messages usi
 
 6. Note down your worker URL (it will be shown after deployment)
 
-### 2. Google Apps Script Setup
+### 3. Google Apps Script Setup
 
 1. Go to [Google Apps Script](https://script.google.com)
 2. Create a new project
@@ -65,7 +76,7 @@ A serverless system that sends Telegram notifications for new Gmail messages usi
 6. Run the `createTrigger` function once to set up the time-based trigger
 7. Grant necessary permissions when prompted
 
-### 3. Security Considerations
+### 4. Security Considerations
 
 1. Keep your Telegram bot token secure:
    - Never commit it to version control
