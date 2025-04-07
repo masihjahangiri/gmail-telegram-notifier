@@ -29,7 +29,6 @@ interface Env {
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   GOOGLE_REDIRECT_URI: string;
-  GOOGLE_TOPIC_NAME: string;
 }
 
 // Main worker handler
@@ -51,6 +50,12 @@ export default {
     // Handle authentication callbacks from Google OAuth
     if (url.pathname === '/auth/google/callback') {
       return this.handleGoogleAuthCallback(request, env);
+    }
+    
+    // Manual check endpoint
+    if (url.pathname === '/check-now') {
+      ctx.waitUntil(this.checkAllGmailAccounts(env));
+      return new Response('Checking for new emails...', { status: 200 });
     }
     
     // Setup webhook URL (kept for manual setup if needed)
@@ -202,9 +207,6 @@ export default {
       // Store credentials in KV
       await this.storeGmailCredentials(chatId, userInfo.email, tokens, env);
       
-      // Setup Gmail push notifications
-      await this.setupGmailPushNotifications(userInfo.email, tokens.access_token, env);
-      
       // Return success page
       return new Response(
         `<html><body>
@@ -220,6 +222,21 @@ export default {
       const errorMessage = isErrorWithMessage(error) ? error.message : 'An unknown error occurred';
       return new Response(`Error: ${errorMessage}`, { status: 500 });
     }
+  },
+  
+  // Get service account token for Gmail API
+  async getServiceAccountToken(env: Env, userEmail?: string): Promise<string> {
+    throw new Error('Service account authentication is no longer supported');
+  },
+  
+  // Helper to convert base64 to ArrayBuffer
+  base64ToArrayBuffer(base64: string): ArrayBuffer {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes.buffer;
   },
   
   // Exchange authorization code for access and refresh tokens
@@ -257,7 +274,12 @@ export default {
       throw new Error(`Failed to get user email: ${await response.text()}`);
     }
     
-    return response.json();
+    const data = await response.json() as { emailAddress: string };
+    if (!data.emailAddress) {
+      throw new Error('Email address not found in response');
+    }
+    
+    return { email: data.emailAddress };
   },
   
   // Store Gmail credentials in KV
@@ -356,24 +378,37 @@ export default {
     );
   },
   
-  // Setup Gmail push notifications (watch)
-  async setupGmailPushNotifications(email: string, accessToken: string, env: Env): Promise<void> {
-    const response = await fetch('https://www.googleapis.com/gmail/v1/users/me/watch', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        topicName: env.GOOGLE_TOPIC_NAME,
-        labelIds: ['INBOX'],
-      }),
-    });
+  // Setup Gmail push notifications (watch) using service account
+  // async setupGmailPushNotifications(email: string, env: Env): Promise<void> {
+  //   const credentialsStr = await env['telegram-gmail'].get(`email:${email}:credentials`);
+  //   if (!credentialsStr) {
+  //     throw new Error('No credentials found for this email');
+  //   }
     
-    if (!response.ok) {
-      throw new Error(`Failed to setup push notifications: ${await response.text()}`);
-    }
-  },
+  //   const credentials: GmailCredentials = JSON.parse(credentialsStr);
+  //   const accessToken = credentials.accessToken;
+    
+  //   // Set up push notifications for this email
+  //   const response = await fetch('https://www.googleapis.com/gmail/v1/users/me/watch', {
+  //     method: 'POST',
+  //     headers: {
+  //       'Authorization': `Bearer ${accessToken}`,
+  //       'Content-Type': 'application/json',
+  //     },
+  //     body: JSON.stringify({
+  //       topicName: env.GOOGLE_TOPIC_NAME,
+  //       labelIds: ['INBOX'],
+  //     }),
+  //   });
+    
+  //   if (!response.ok) {
+  //     throw new Error(`Failed to set up push notifications: ${await response.text()}`);
+  //   }
+    
+  //   const data = await response.json() as { historyId: number };
+  //   // Store the history ID for future reference
+  //   await env['telegram-gmail'].put(`email:${email}:historyId`, data.historyId.toString());
+  // },
   
   // Handle Gmail push notifications
   async handleGmailPush(request: Request, env: Env): Promise<Response> {
@@ -454,7 +489,7 @@ export default {
   },
   
   // Get unread messages
-  async getUnreadMessages(accessToken: string): Promise<EmailMessage[]> {
+  async getUnreadMessages(accessToken: string, lastMessageId?: string, env?: Env): Promise<EmailMessage[]> {
     // Query for unread messages in inbox
     const query = 'is:unread in:inbox';
     const response = await fetch(
@@ -476,8 +511,17 @@ export default {
     // Get message details
     if (data.messages && data.messages.length > 0) {
       for (const message of data.messages.slice(0, 5)) { // Limit to 5 messages at a time
+        // Skip if we've already seen this message
+        if (lastMessageId && message.id === lastMessageId) {
+          break;
+        }
         const messageDetails = await this.getMessageDetails(message.id, accessToken);
         messages.push(messageDetails);
+      }
+      
+      // Store the latest message ID
+      if (data.messages[0] && env) {
+        await this.storeLastMessageId(accessToken, data.messages[0].id, env);
       }
     }
     
@@ -513,43 +557,86 @@ export default {
     };
   },
   
-  // Send email notification via Telegram
-  async sendEmailNotification(chatId: number, email: string, message: EmailMessage, env: Env): Promise<void> {
-    const text = `📧 New email in ${email}\n` +
-                 `From: ${message.from}\n` +
-                 `Subject: ${message.subject}\n\n` +
-                 `${message.snippet}...\n\n` +
-                 `[Open in Gmail](${message.link})`;
-    
-    await this.sendTelegramMessage(chatId, text, env, true);
+  // Helper function to escape HTML special characters
+  escapeHtml(unsafe: string): string {
+    return unsafe
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   },
   
-  // Send Telegram message (supports Markdown)
+  // Send email notification via Telegram
+  async sendEmailNotification(chatId: number, email: string, message: EmailMessage, env: Env): Promise<void> {
+    try {
+      const escapedEmail = this.escapeHtml(email);
+      const escapedFrom = this.escapeHtml(message.from);
+      const escapedSubject = this.escapeHtml(message.subject);
+      const escapedSnippet = this.escapeHtml(message.snippet);
+      const escapedLink = this.escapeHtml(message.link);
+      
+      const text = `📧 New email in <b>${escapedEmail}</b>\n` +
+                   `From: <b>${escapedFrom}</b>\n` +
+                   `Subject: <b>${escapedSubject}</b>\n\n` +
+                   `${escapedSnippet}...\n\n` +
+                   `<a href="${escapedLink}">Open in Gmail</a>`;
+      
+      await this.sendTelegramMessage(chatId, text, env, 'HTML');
+    } catch (error) {
+      console.error(`Failed to send email notification for ${email} to chat ${chatId}:`, error);
+      throw error;
+    }
+  },
+  
+  // Send Telegram message (supports HTML)
   async sendTelegramMessage(
     chatId: number, 
     text: string, 
     env: Env, 
-    markdown: boolean = false
+    parse_mode: 'HTML' | undefined = undefined
   ): Promise<void> {
-    const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
-    
-    const params = {
-      chat_id: chatId,
-      text,
-      parse_mode: markdown ? 'MarkdownV2' : undefined,
-      disable_web_page_preview: true,
-    };
-    
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(params),
-    });
-    
-    if (!response.ok) {
-      console.error(`Failed to send Telegram message: ${await response.text()}`);
+    try {
+      if (!env.TELEGRAM_BOT_TOKEN) {
+        throw new Error('TELEGRAM_BOT_TOKEN is not set');
+      }
+
+      const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
+      
+      const params = {
+        chat_id: chatId,
+        text,
+        parse_mode,
+        disable_web_page_preview: true,
+      };
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(params),
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Telegram API error:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText,
+          chatId,
+          textLength: text.length
+        });
+        throw new Error(`Failed to send Telegram message: ${errorText}`);
+      }
+
+      const result = await response.json() as { ok: boolean; description?: string };
+      if (!result.ok) {
+        throw new Error(`Telegram API returned error: ${result.description || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error in sendTelegramMessage:', error);
+      throw error;
     }
   },
   
@@ -593,7 +680,19 @@ export default {
     });
   },
   
-  // Check all Gmail accounts for new emails (fallback for push notifications)
+  // Store the last checked message ID
+  async storeLastMessageId(accessToken: string, messageId: string, env: Env): Promise<void> {
+    // Get user email from access token
+    const userInfo = await this.getUserEmail(accessToken);
+    await env['telegram-gmail'].put(`email:${userInfo.email}:lastMessageId`, messageId);
+  },
+
+  // Get the last checked message ID
+  async getLastMessageId(email: string, env: Env): Promise<string | undefined> {
+    return await env['telegram-gmail'].get(`email:${email}:lastMessageId`) || undefined;
+  },
+  
+  // Check all Gmail accounts for new emails
   async checkAllGmailAccounts(env: Env): Promise<void> {
     // Get all emails from KV (listing is limited, so this is simplified)
     const listResult = await env['telegram-gmail'].list({ prefix: 'email:' });
@@ -646,9 +745,12 @@ export default {
           }
         }
         
+        // Get last checked message ID
+        const lastMessageId = await this.getLastMessageId(email, env);
+        
         // Get unread messages
         try {
-          const unreadMessages = await this.getUnreadMessages(accessToken);
+          const unreadMessages = await this.getUnreadMessages(accessToken, lastMessageId, env);
           
           // Send notification for each unread message
           for (const message of unreadMessages) {
