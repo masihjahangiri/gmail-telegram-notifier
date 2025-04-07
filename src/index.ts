@@ -573,7 +573,16 @@ export default {
       const escapedEmail = this.escapeHtml(email);
       const escapedFrom = this.escapeHtml(message.from);
       const escapedSubject = this.escapeHtml(message.subject);
-      const escapedSnippet = this.escapeHtml(message.snippet);
+      
+      // Clean up the snippet by removing reply formatting
+      let cleanedSnippet = message.snippet
+        .replace(/On.*wrote:.*$/s, '') // Remove "On ... wrote:" lines
+        .replace(/&gt;/g, '>') // Convert HTML entities back
+        .replace(/&lt;/g, '<')
+        .replace(/&amp;/g, '&')
+        .trim();
+      
+      const escapedSnippet = this.escapeHtml(cleanedSnippet);
       const escapedLink = this.escapeHtml(message.link);
       
       const text = `📧 New email in <b>${escapedEmail}</b>\n` +
