@@ -201,10 +201,18 @@ export default {
         if (!isWebhookSet) {
           return this.setupWebhook(request, env);
         }
-        return new Response('Webhook is already set up', { status: 200 });
+        return serveStaticPage('/index.html');
       } catch (error) {
         return new Response(`Error setting up webhook: ${error}`, { status: 500 });
       }
+    }
+
+    if (url.pathname === '/privacy') {
+      return serveStaticPage('/privacy.html');
+    }
+
+    if (url.pathname === '/terms') {
+      return serveStaticPage('/terms.html');
     }
     
     return new Response('Not found', { status: 404 });
@@ -1029,3 +1037,19 @@ export default {
     }
   },
 };
+
+// Add this function to serve static HTML pages
+async function serveStaticPage(path: string): Promise<Response> {
+  try {
+    const file = await fetch(`https://raw.githubusercontent.com/your-repo/main/src/pages${path}`);
+    if (!file.ok) {
+      return new Response('Page not found', { status: 404 });
+    }
+    const html = await file.text();
+    return new Response(html, {
+      headers: { 'Content-Type': 'text/html' },
+    });
+  } catch (error) {
+    return new Response('Error serving page', { status: 500 });
+  }
+}
