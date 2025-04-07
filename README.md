@@ -1,81 +1,113 @@
 # Gmail Telegram Notifier Bot 🤖
 
-[![Telegram Bot](https://img.shields.io/badge/Telegram-Bot-blue.svg)](https://t.me/mygmailsbot)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+Stay effortlessly connected to your inbox—**for *all* your Gmail accounts**—with **Gmail Telegram Notifier Bot**!  
+Get instant, real-time alerts directly in Telegram whenever new emails hit your inbox.
 
-Get instant notifications for your Gmail emails directly in Telegram! Never miss an important email again with this powerful and secure Gmail notification bot.
+> 💡 **Now with full support for multiple Gmail accounts**—manage all your inboxes in one place.
 
-## 🌟 Features
+---
 
-- 🔔 Real-time email notifications in Telegram
-- 🔒 Secure OAuth2 authentication with Google
-- 📱 Mobile-friendly interface
-- ⚡ Instant push notifications
-- 🔄 Multiple Gmail account support
-- 🛡️ Read-only access to your emails
-- 🔍 Customizable notification settings
+## 🔥 Why You'll Love It
+
+- **🔄 Multiple Gmail Account Support**  
+  Add and manage several Gmail accounts with ease—switching between inboxes has never been smoother.
+
+- **📬 Real-Time Notifications in Telegram**  
+  Stay updated the moment an email lands. Get push notifications instantly, right in your Telegram chat.
+
+- **🔒 Rock-Solid Security**  
+  Authenticated via **Google OAuth2** with **read-only access**, so your data stays safe and untouched.
+
+- **⚙️ Easy Setup & User-Friendly Commands**  
+  Use intuitive commands like `/add`, `/list`, and `/remove` to manage your Gmail connections seamlessly.
+
+- **📱 Works Anywhere**  
+  Compatible with Android, iOS, Desktop, and Web versions of Telegram.
+
+---
 
 ## 🚀 Quick Start
 
-1. Start the bot: [@mygmailsbot](https://t.me/mygmailsbot)
-2. Use `/add` command to connect your Gmail account
-3. Authorize the bot with Google
-4. Start receiving instant notifications!
+1. Launch the bot: [@mygmailsbot](https://t.me/mygmailsbot)  
+2. Type `/add` to connect your first Gmail account  
+3. Authorize via secure Google login  
+4. Get Telegram alerts the moment new mail arrives  
+5. Repeat `/add` to link more Gmail accounts!
 
-## 📋 Commands
+---
 
-- `/start` - Start the bot and get welcome message
-- `/add` - Connect a new Gmail account
-- `/list` - View all connected Gmail accounts
-- `/remove` - Remove a connected Gmail account
+## 🛠 Commands
+
+- `/start` - Start the bot and get welcome message  
+- `/add` - Connect a new Gmail account  
+- `/list` - View all connected Gmail accounts  
+- `/remove` - Remove a connected Gmail account  
 - `/help` - Show available commands
 
-## 🔒 Security & Privacy
+---
 
-Your privacy and security are our top priorities:
+## 🔐 Security & Privacy
 
-- 🔐 Uses official Google OAuth2 for authentication
-- 🔑 Read-only access to your Gmail
-- 🗑️ No email content is stored
-- 🔄 Secure token refresh mechanism
-- 🛡️ End-to-end encrypted communication
+- Uses official **Google OAuth2** for authentication  
+- **Read-only access** to your Gmail  
+- No email content is stored  
+- Tokens securely managed and refreshed  
+- End-to-end encrypted communication
 
-## 🤔 How It Works
+---
 
-1. You authorize the bot to access your Gmail
+## 🧠 How It Works
+
+1. You authorize the bot to access Gmail (read-only)
 2. The bot monitors your inbox for new emails
-3. When a new email arrives, you get an instant notification in Telegram
-4. Click the notification to open the email directly in Gmail
+3. Telegram sends you instant alerts
+4. Tap to open the email directly in Gmail
 
-## 📱 Supported Platforms
+---
 
-- Android
-- iOS
-- Desktop
+## 🖥 Supported Platforms
+
+- Android  
+- iOS  
+- Desktop  
 - Web
 
-## 🔧 Technical Details
+---
 
-- Built with TypeScript
-- Runs on Cloudflare Workers
-- Uses Gmail API for email monitoring
-- Implements Telegram Bot API
-- Secure token storage and management
+## 🔧 Technical Stack
+
+- Built with **TypeScript**  
+- Hosted on **Cloudflare Workers**  
+- Uses **Gmail API** + **Telegram Bot API**  
+- Secure token storage & refresh logic
+
+---
 
 ## 📈 Performance
 
-- ⚡ Instant notifications
-- 🔄 5-minute backup check interval
-- 📊 High reliability and uptime
+- ⚡ Instant push notifications  
+- 🔄 5-minute backup check interval  
+- 📊 High reliability and uptime  
 - 🚀 Optimized for low latency
+
+---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Pull Requests are welcome!  
+Feel free to fork and improve. Suggestions via issues are appreciated.
+
+---
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License – see the [LICENSE](./LICENSE) file for details.
+
+---
+
+## 📞 Support
+
+- Open an [issue](https://github.com/masihjahangiri/gmail-telegram-notifier/issues)  
 
 ---
 
