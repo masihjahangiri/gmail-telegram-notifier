@@ -17,6 +17,7 @@ crons = ["*/5 * * * *"]  # Run every 5 minutes
 
 [vars]
 TELEGRAM_BOT_USERNAME = "mygmailsbot"
+GITHUB_REPO_URL = "https://github.com/masihjahangiri/gmail-telegram-notifier"
 GOOGLE_CLIENT_ID = "1084242177961-7fsaufibk1ttjmiikvcmmsrstoi10jka.apps.googleusercontent.com"
 GOOGLE_REDIRECT_URI = "https://gmail-telegram-notifier.masihjahan.workers.dev/auth/google/callback"
 

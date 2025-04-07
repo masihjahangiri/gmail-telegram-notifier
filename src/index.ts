@@ -160,6 +160,9 @@ interface Env {
   GOOGLE_CLIENT_SECRET: string;
   GOOGLE_REDIRECT_URI: string;
   TELEGRAM_BOT_USERNAME: string;
+
+  // GitHub repository URL for static pages
+  GITHUB_REPO_URL: string;
 }
 
 // Main worker handler
@@ -201,18 +204,18 @@ export default {
         if (!isWebhookSet) {
           return this.setupWebhook(request, env);
         }
-        return serveStaticPage('/index.html');
+        return serveStaticPage('/index.html', env);
       } catch (error) {
         return new Response(`Error setting up webhook: ${error}`, { status: 500 });
       }
     }
 
     if (url.pathname === '/privacy') {
-      return serveStaticPage('/privacy.html');
+      return serveStaticPage('/privacy.html', env);
     }
 
     if (url.pathname === '/terms') {
-      return serveStaticPage('/terms.html');
+      return serveStaticPage('/terms.html', env);
     }
     
     return new Response('Not found', { status: 404 });
@@ -1039,9 +1042,14 @@ export default {
 };
 
 // Add this function to serve static HTML pages
-async function serveStaticPage(path: string): Promise<Response> {
+async function serveStaticPage(path: string, env: Env): Promise<Response> {
   try {
-    const file = await fetch(`https://raw.githubusercontent.com/your-repo/main/src/pages${path}`);
+    // Convert GitHub repository URL to raw content URL
+    const rawUrl = env.GITHUB_REPO_URL
+      .replace('github.com', 'raw.githubusercontent.com')
+      .replace(/\/$/, `/main/src/pages${path}`);
+    
+    const file = await fetch(rawUrl);
     if (!file.ok) {
       return new Response('Page not found', { status: 404 });
     }
