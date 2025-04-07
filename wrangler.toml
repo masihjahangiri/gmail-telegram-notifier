@@ -1,17 +1,37 @@
-name = "gmail-telegram-bot"
+name = "gmail-telegram-notifier"
 main = "src/index.ts"
 compatibility_date = "2023-05-18"
 
-# KV Namespace for storing user data and Gmail credentials
-kv_namespaces = [
-  { binding = "USER_DATA", id = "YOUR_KV_NAMESPACE_ID" }
-]
+[[kv_namespaces]]
+binding = "telegram-gmail"
+id = "024fa247c98b49efa73fb8aaa8bc21b9"
 
 # Scheduled job to check emails periodically (as backup for push notifications)
 [triggers]
 crons = ["*/30 * * * *"]  # Run every 30 minutes
 
 [vars]
-# These will be overridden by secrets
-TELEGRAM_BOT_TOKEN = "7920854064:AAGjdt4D8loaRKPPX7FFAiUwm9PuCskWfHQ"
-WEBHOOK_SECRET
+GOOGLE_CLIENT_ID = "1084242177961-7fsaufibk1ttjmiikvcmmsrstoi10jka.apps.googleusercontent.com"
+GOOGLE_REDIRECT_URI = "https://gmail-telegram-notifier.masihjahan.workers.dev/auth/google/callback"
+GOOGLE_TOPIC_NAME = "projects/gmail-telegram-notifier-456103/topics/telegram-gmail"
+
+# # For local development
+# [vars.dev]
+# GOOGLE_REDIRECT_URI = "http://127.0.0.1:8787/auth/google/callback"
+# GOOGLE_TOPIC_NAME = "projects/gmail-telegram-notifier-456103/topics/telegram-gmail"
+
+# # For production
+# [vars.production]
+# GOOGLE_REDIRECT_URI = "https://gmail-telegram-notifier.masihjahan.workers.dev/auth/google/callback"
+# GOOGLE_TOPIC_NAME = "projects/gmail-telegram-notifier-456103/topics/telegram-gmail"
+
+
+
+
+
+# Secrets that should be set using wrangler secret put
+# note: WEBHOOK_SECRET is a random string, so you can generate it by running this command: openssl rand -base64 32
+
+# wrangler secret put TELEGRAM_BOT_TOKEN
+# wrangler secret put WEBHOOK_SECRET
+# wrangler secret put GOOGLE_CLIENT_SECRET

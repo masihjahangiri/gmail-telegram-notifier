@@ -63,3 +63,16 @@ export function isErrorWithMessage(error: unknown): error is ErrorWithMessage {
     typeof (error as Record<string, unknown>).message === 'string'
   );
 }
+
+export interface TelegramWebhookInfo {
+  ok: boolean;
+  result: {
+    url: string;
+    has_custom_certificate: boolean;
+    pending_update_count: number;
+    last_error_date?: number;
+    last_error_message?: string;
+    max_connections?: number;
+    ip_address?: string;
+  };
+}

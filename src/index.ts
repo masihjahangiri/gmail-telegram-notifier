@@ -10,7 +10,8 @@ import {
   GmailMessageDetails,
   GmailPushNotification,
   ErrorWithMessage,
-  isErrorWithMessage
+  isErrorWithMessage,
+  TelegramWebhookInfo
 } from './types';
 
 // Environment variables interface for Cloudflare Worker
@@ -23,6 +24,12 @@ interface Env {
   
   // Secret for webhook
   WEBHOOK_SECRET: string;
+  
+  // Google OAuth configuration
+  GOOGLE_CLIENT_ID: string;
+  GOOGLE_CLIENT_SECRET: string;
+  GOOGLE_REDIRECT_URI: string;
+  GOOGLE_TOPIC_NAME: string;
 }
 
 // Main worker handler
@@ -46,9 +53,22 @@ export default {
       return this.handleGoogleAuthCallback(request, env);
     }
     
-    // Setup webhook URL
+    // Setup webhook URL (kept for manual setup if needed)
     if (url.pathname === '/setup-webhook') {
       return this.setupWebhook(request, env);
+    }
+    
+    // Check and setup webhook on root path
+    if (url.pathname === '/') {
+      try {
+        const isWebhookSet = await this.checkWebhookStatus(env);
+        if (!isWebhookSet) {
+          return this.setupWebhook(request, env);
+        }
+        return new Response('Webhook is already set up', { status: 200 });
+      } catch (error) {
+        return new Response(`Error setting up webhook: ${error}`, { status: 500 });
+      }
     }
     
     return new Response('Not found', { status: 404 });
@@ -97,7 +117,7 @@ export default {
         
       case '/add':
         // Generate OAuth URL
-        const authUrl = this.generateGoogleAuthUrl(chatId);
+        const authUrl = this.generateGoogleAuthUrl(chatId, env);
         await this.sendTelegramMessage(
           chatId, 
           `Please authorize access to your Gmail by clicking this link: ${authUrl}`, 
@@ -146,15 +166,13 @@ export default {
   },
   
   // Generate Google OAuth URL
-  generateGoogleAuthUrl(chatId: number): string {
-    const clientId = 'YOUR_GOOGLE_CLIENT_ID';
-    const redirectUri = 'https://your-worker-domain.workers.dev/auth/google/callback';
+  generateGoogleAuthUrl(chatId: number, env: Env): string {
     const scope = 'https://www.googleapis.com/auth/gmail.readonly';
-    const state = chatId.toString(); // Use chat ID as state to identify user after auth
+    const state = chatId.toString();
     
     return `https://accounts.google.com/o/oauth2/v2/auth?` +
-      `client_id=${encodeURIComponent(clientId)}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `client_id=${encodeURIComponent(env.GOOGLE_CLIENT_ID)}` +
+      `&redirect_uri=${encodeURIComponent(env.GOOGLE_REDIRECT_URI)}` +
       `&response_type=code` +
       `&scope=${encodeURIComponent(scope)}` +
       `&access_type=offline` +
@@ -185,7 +203,7 @@ export default {
       await this.storeGmailCredentials(chatId, userInfo.email, tokens, env);
       
       // Setup Gmail push notifications
-      await this.setupGmailPushNotifications(userInfo.email, tokens.access_token);
+      await this.setupGmailPushNotifications(userInfo.email, tokens.access_token, env);
       
       // Return success page
       return new Response(
@@ -206,10 +224,6 @@ export default {
   
   // Exchange authorization code for access and refresh tokens
   async exchangeCodeForTokens(code: string, env: Env): Promise<any> {
-    const clientId = 'YOUR_GOOGLE_CLIENT_ID';
-    const clientSecret = 'YOUR_GOOGLE_CLIENT_SECRET';
-    const redirectUri = 'https://your-worker-domain.workers.dev/auth/google/callback';
-    
     const response = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: {
@@ -217,9 +231,9 @@ export default {
       },
       body: new URLSearchParams({
         code,
-        client_id: clientId,
-        client_secret: clientSecret,
-        redirect_uri: redirectUri,
+        client_id: env.GOOGLE_CLIENT_ID,
+        client_secret: env.GOOGLE_CLIENT_SECRET,
+        redirect_uri: env.GOOGLE_REDIRECT_URI,
         grant_type: 'authorization_code',
       }),
     });
@@ -343,7 +357,7 @@ export default {
   },
   
   // Setup Gmail push notifications (watch)
-  async setupGmailPushNotifications(email: string, accessToken: string): Promise<void> {
+  async setupGmailPushNotifications(email: string, accessToken: string, env: Env): Promise<void> {
     const response = await fetch('https://www.googleapis.com/gmail/v1/users/me/watch', {
       method: 'POST',
       headers: {
@@ -351,7 +365,7 @@ export default {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        topicName: 'projects/your-project-id/topics/gmail-notifications',
+        topicName: env.GOOGLE_TOPIC_NAME,
         labelIds: ['INBOX'],
       }),
     });
@@ -419,17 +433,14 @@ export default {
   
   // Refresh access token
   async refreshAccessToken(refreshToken: string, env: Env): Promise<any> {
-    const clientId = 'YOUR_GOOGLE_CLIENT_ID';
-    const clientSecret = 'YOUR_GOOGLE_CLIENT_SECRET';
-    
     const response = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
+        client_id: env.GOOGLE_CLIENT_ID,
+        client_secret: env.GOOGLE_CLIENT_SECRET,
         refresh_token: refreshToken,
         grant_type: 'refresh_token',
       }),
@@ -540,6 +551,20 @@ export default {
     if (!response.ok) {
       console.error(`Failed to send Telegram message: ${await response.text()}`);
     }
+  },
+  
+  // Check if webhook is already set up
+  async checkWebhookStatus(env: Env): Promise<boolean> {
+    const response = await fetch(
+      `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getWebhookInfo`
+    );
+    
+    if (!response.ok) {
+      throw new Error(`Failed to check webhook status: ${await response.text()}`);
+    }
+    
+    const result = await response.json() as TelegramWebhookInfo;
+    return result.ok && result.result.url !== '';
   },
   
   // Setup Telegram webhook
