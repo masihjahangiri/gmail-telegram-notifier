@@ -88,6 +88,19 @@ export default {
   async handleTelegramWebhook(request: Request, env: Env): Promise<Response> {
     const update = await request.json() as TelegramUpdate;
     
+    console.log('Received update:', JSON.stringify(update, null, 2));
+    
+    // Handle callback queries
+    if (update.callback_query) {
+      console.log('Processing callback query:', update.callback_query);
+      try {
+        await this.handleCallbackQuery(update, env);
+      } catch (error) {
+        console.error('Error handling callback query:', error);
+      }
+      return new Response('OK');
+    }
+    
     // Check if this is a message
     if (!update.message) {
       return new Response('OK');
@@ -141,11 +154,8 @@ export default {
         if (email) {
           await this.removeAccount(chatId, email, env);
         } else {
-          await this.sendTelegramMessage(
-            chatId, 
-            'Please specify an email address to remove: /remove your@gmail.com', 
-            env
-          );
+          // Show list of accounts with inline keyboard
+          await this.showRemoveAccountOptions(chatId, env);
         }
         break;
         
@@ -155,7 +165,7 @@ export default {
           'Available commands:\n' +
           '/add - Connect a new Gmail account\n' +
           '/list - Show all connected accounts\n' +
-          '/remove email@gmail.com - Remove a specific account\n' +
+          '/remove - Remove a connected account\n' +
           '/help - Show this help message',
           env
         );
@@ -343,12 +353,148 @@ export default {
     );
   },
   
+  // Show remove account options with inline keyboard
+  async showRemoveAccountOptions(chatId: number, env: Env): Promise<void> {
+    const userAccountsStr = await env['telegram-gmail'].get(`user:${chatId}:accounts`);
+    
+    if (!userAccountsStr || JSON.parse(userAccountsStr).length === 0) {
+      await this.sendTelegramMessage(
+        chatId,
+        'You have no Gmail accounts connected. Use /add to connect an account.',
+        env
+      );
+      return;
+    }
+    
+    const accounts = JSON.parse(userAccountsStr);
+    const keyboard = {
+      inline_keyboard: accounts.map((email: string) => [{
+        text: `Remove ${email}`,
+        callback_data: `remove_${email}`
+      }])
+    };
+    
+    await this.sendTelegramMessage(
+      chatId,
+      'Select an account to remove:',
+      env,
+      'HTML',
+      keyboard
+    );
+  },
+
+  // Handle callback queries (for inline keyboard)
+  async handleCallbackQuery(update: TelegramUpdate, env: Env): Promise<void> {
+    if (!update.callback_query) {
+      console.log('No callback query found in update');
+      return;
+    }
+    
+    const chatId = update.callback_query.message?.chat.id;
+    const data = update.callback_query.data;
+    const callbackId = update.callback_query.id;
+    
+    console.log('Callback query details:', { chatId, data, callbackId });
+    
+    if (!chatId || !data) {
+      console.log('Missing required callback query data');
+      return;
+    }
+    
+    try {
+      console.log('Answering callback query...');
+      // Acknowledge the callback query first
+      await this.answerCallbackQuery(callbackId, env);
+      console.log('Callback query answered successfully');
+      
+      if (data.startsWith('remove_')) {
+        const email = data.replace('remove_', '');
+        console.log('Showing confirmation for email:', email);
+        await this.confirmRemoveAccount(chatId, email, env);
+      } else if (data.startsWith('confirm_remove_')) {
+        const email = data.replace('confirm_remove_', '');
+        console.log('Removing account:', email);
+        await this.removeAccount(chatId, email, env);
+      } else if (data === 'cancel_remove') {
+        console.log('Cancelling account removal');
+        await this.sendTelegramMessage(
+          chatId,
+          'Account removal cancelled.',
+          env
+        );
+      }
+    } catch (error) {
+      console.error('Error handling callback query:', error);
+      // Try to send an error message to the user
+      if (chatId) {
+        await this.sendTelegramMessage(
+          chatId,
+          '❌ An error occurred while processing your request. Please try again.',
+          env
+        );
+      }
+    }
+  },
+
+  // Answer callback query to remove the loading state
+  async answerCallbackQuery(callbackId: string, env: Env): Promise<void> {
+    const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/answerCallbackQuery`;
+    
+    console.log('Sending answer to callback query:', callbackId);
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        callback_query_id: callbackId
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Failed to answer callback query:', errorText);
+      throw new Error(`Failed to answer callback query: ${errorText}`);
+    }
+    
+    console.log('Callback query answered successfully');
+  },
+
+  // Show confirmation dialog for account removal
+  async confirmRemoveAccount(chatId: number, email: string, env: Env): Promise<void> {
+    const keyboard = {
+      inline_keyboard: [
+        [{
+          text: 'Yes, remove this account',
+          callback_data: `confirm_remove_${email}`
+        }],
+        [{
+          text: 'Cancel',
+          callback_data: 'cancel_remove'
+        }]
+      ]
+    };
+    
+    await this.sendTelegramMessage(
+      chatId,
+      `Are you sure you want to remove ${email}? You will no longer receive notifications for this account.`,
+      env,
+      'HTML',
+      keyboard
+    );
+  },
+
   // Remove an account
   async removeAccount(chatId: number, email: string, env: Env): Promise<void> {
     const userAccountsStr = await env['telegram-gmail'].get(`user:${chatId}:accounts`);
     
     if (!userAccountsStr) {
-      await this.sendTelegramMessage(chatId, 'You have no connected accounts.', env);
+      await this.sendTelegramMessage(
+        chatId,
+        '❌ You have no connected accounts. Use /add to connect an account.',
+        env
+      );
       return;
     }
     
@@ -357,7 +503,7 @@ export default {
     if (!accounts.includes(email)) {
       await this.sendTelegramMessage(
         chatId,
-        `The account ${email} is not connected to your Telegram.`,
+        `❌ The account ${email} is not connected to your Telegram. Use /list to see your connected accounts.`,
         env
       );
       return;
@@ -373,7 +519,7 @@ export default {
     
     await this.sendTelegramMessage(
       chatId,
-      `Successfully removed ${email} from your notifications.`,
+      `✅ Successfully removed ${email} from your notifications. You will no longer receive email notifications for this account.`,
       env
     );
   },
@@ -455,11 +601,14 @@ export default {
       await env['telegram-gmail'].put(`email:${email}:credentials`, JSON.stringify(updatedCredentials));
     }
     
-    // Get unread messages
-    const unreadMessages = await this.getUnreadMessages(accessToken);
+    // Get last checked message ID
+    const lastMessageId = await this.getLastMessageId(email, env);
     
-    // Send notification for each unread message
-    for (const message of unreadMessages) {
+    // Get new messages
+    const newMessages = await this.getUnreadMessages(accessToken, lastMessageId, env);
+    
+    // Send notification for each new message
+    for (const message of newMessages) {
       await this.sendEmailNotification(chatId, email, message, env);
     }
     
@@ -491,7 +640,7 @@ export default {
   // Get unread messages
   async getUnreadMessages(accessToken: string, lastMessageId?: string, env?: Env): Promise<EmailMessage[]> {
     // Query for unread messages in inbox
-    const query = 'is:unread in:inbox';
+    const query = 'in:inbox'; // Removed is:unread to get all new messages
     const response = await fetch(
       `https://www.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}`,
       {
@@ -519,9 +668,9 @@ export default {
         messages.push(messageDetails);
       }
       
-      // Store the latest message ID
-      if (data.messages[0] && env) {
-        await this.storeLastMessageId(accessToken, data.messages[0].id, env);
+      // Store the latest message ID if we have new messages
+      if (messages.length > 0 && env) {
+        await this.storeLastMessageId(accessToken, messages[0].id, env);
       }
     }
     
@@ -531,7 +680,7 @@ export default {
   // Get message details
   async getMessageDetails(messageId: string, accessToken: string): Promise<EmailMessage> {
     const response = await fetch(
-      `https://www.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=metadata&metadataHeaders=Subject&metadataHeaders=From`,
+      `https://www.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=To`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -547,11 +696,13 @@ export default {
     
     const subject = data.payload.headers.find((h: { name: string; value: string }) => h.name === 'Subject')?.value || 'No Subject';
     const from = data.payload.headers.find((h: { name: string; value: string }) => h.name === 'From')?.value || 'Unknown Sender';
+    const to = data.payload.headers.find((h: { name: string; value: string }) => h.name === 'To')?.value || '';
     
     return {
       id: messageId,
       subject,
       from,
+      to,
       snippet: data.snippet,
       link: `https://mail.google.com/mail/u/0/#inbox/${messageId}`,
     };
@@ -570,22 +721,48 @@ export default {
   // Send email notification via Telegram
   async sendEmailNotification(chatId: number, email: string, message: EmailMessage, env: Env): Promise<void> {
     try {
-      const escapedEmail = this.escapeHtml(email);
+      const escapedTo = this.escapeHtml(message.to);
       const escapedFrom = this.escapeHtml(message.from);
       const escapedSubject = this.escapeHtml(message.subject);
       
-      // Clean up the snippet by removing reply formatting
+      // Clean up the snippet by removing reply formatting and common email patterns
       let cleanedSnippet = message.snippet
+        // Remove common reply patterns
         .replace(/On.*wrote:.*$/s, '') // Remove "On ... wrote:" lines
-        .replace(/&gt;/g, '>') // Convert HTML entities back
+        .replace(/On.*,.*wrote:.*$/s, '') // Remove "On [date], [name] wrote:"
+        .replace(/From:.*\n.*\n.*\n.*\n.*\n.*$/s, '') // Remove forwarded email headers
+        .replace(/Sent:.*\n.*\n.*\n.*\n.*\n.*$/s, '') // Remove sent email headers
+        .replace(/Date:.*\n.*\n.*\n.*\n.*\n.*$/s, '') // Remove date headers
+        .replace(/Subject:.*\n.*\n.*\n.*\n.*\n.*$/s, '') // Remove subject headers
+        .replace(/To:.*\n.*\n.*\n.*\n.*\n.*$/s, '') // Remove to headers
+        .replace(/Cc:.*\n.*\n.*\n.*\n.*\n.*$/s, '') // Remove cc headers
+        .replace(/Bcc:.*\n.*\n.*\n.*\n.*\n.*$/s, '') // Remove bcc headers
+        // Remove common email signatures
+        .replace(/--\s*\n.*$/s, '') // Remove signatures after "--"
+        .replace(/Best regards,.*$/s, '') // Remove "Best regards" signatures
+        .replace(/Regards,.*$/s, '') // Remove "Regards" signatures
+        .replace(/Thanks,.*$/s, '') // Remove "Thanks" signatures
+        .replace(/Sincerely,.*$/s, '') // Remove "Sincerely" signatures
+        // Remove common email separators
+        .replace(/-{3,}.*$/s, '') // Remove horizontal lines
+        .replace(/_{3,}.*$/s, '') // Remove underscore lines
+        .replace(/\*{3,}.*$/s, '') // Remove asterisk lines
+        // Convert HTML entities back to their original characters
+        .replace(/&gt;/g, '>')
         .replace(/&lt;/g, '<')
         .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&nbsp;/g, ' ')
+        // Remove excessive whitespace
+        .replace(/\s+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
         .trim();
       
       const escapedSnippet = this.escapeHtml(cleanedSnippet);
       const escapedLink = this.escapeHtml(message.link);
       
-      const text = `📧 New email in <b>${escapedEmail}</b>\n` +
+      const text = `📧 New email in <b>${escapedTo}</b>\n` +
                    `From: <b>${escapedFrom}</b>\n` +
                    `Subject: <b>${escapedSubject}</b>\n\n` +
                    `${escapedSnippet}...\n\n` +
@@ -603,7 +780,8 @@ export default {
     chatId: number, 
     text: string, 
     env: Env, 
-    parse_mode: 'HTML' | undefined = undefined
+    parse_mode: 'HTML' | undefined = undefined,
+    keyboard: any = null
   ): Promise<void> {
     try {
       if (!env.TELEGRAM_BOT_TOKEN) {
@@ -612,12 +790,16 @@ export default {
 
       const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
       
-      const params = {
+      const params: any = {
         chat_id: chatId,
         text,
         parse_mode,
         disable_web_page_preview: true,
       };
+
+      if (keyboard) {
+        params.reply_markup = JSON.stringify(keyboard);
+      }
       
       const response = await fetch(url, {
         method: 'POST',
@@ -677,7 +859,7 @@ export default {
         },
         body: JSON.stringify({
           url: webhookUrl,
-          allowed_updates: ['message'],
+          allowed_updates: ['message', 'callback_query'],
         }),
       }
     );

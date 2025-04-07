@@ -5,6 +5,7 @@ export interface EmailMessage {
   id: string;
   subject: string;
   from: string;
+  to: string;
   snippet: string;
   link: string;
 }
@@ -19,6 +20,16 @@ export interface GmailCredentials {
 // Telegram Update types
 export interface TelegramUpdate {
   message?: TelegramMessage;
+  callback_query?: {
+    id: string;
+    from: {
+      id: number;
+      first_name: string;
+      username?: string;
+    };
+    message?: TelegramMessage;
+    data?: string;
+  };
 }
 
 export interface TelegramMessage {
