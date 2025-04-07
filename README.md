@@ -77,13 +77,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 📞 Support
-
-For support, please:
-1. Use the `/help` command in the bot
-2. Open an issue in this repository
-3. Contact us at [@mygmailsbot](https://t.me/mygmailsbot)
-
 ---
 
 Made with ❤️ by [Masih Jahangiri](https://masihjahangiri.com)
