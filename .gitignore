@@ -36,4 +36,7 @@ coverage/
 
 # Temporary files
 tmp/
-temp/ 
+temp/
+
+# Service account key
+service-account.json

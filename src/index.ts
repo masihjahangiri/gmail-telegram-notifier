@@ -20,7 +20,7 @@ interface Env {
   TELEGRAM_BOT_TOKEN: string;
   
   // KV namespace for storing user data and Gmail credentials
-  USER_DATA: KVNamespace;
+  'telegram-gmail': KVNamespace;
   
   // Secret for webhook
   WEBHOOK_SECRET: string;
@@ -272,13 +272,13 @@ export default {
     env: Env
   ): Promise<void> {
     // Get existing accounts for this user
-    const userAccountsStr = await env.USER_DATA.get(`user:${chatId}:accounts`);
+    const userAccountsStr = await env['telegram-gmail'].get(`user:${chatId}:accounts`);
     let userAccounts = userAccountsStr ? JSON.parse(userAccountsStr) : [];
     
     // Add this account if not already added
     if (!userAccounts.includes(email)) {
       userAccounts.push(email);
-      await env.USER_DATA.put(`user:${chatId}:accounts`, JSON.stringify(userAccounts));
+      await env['telegram-gmail'].put(`user:${chatId}:accounts`, JSON.stringify(userAccounts));
     }
     
     // Store tokens for this email
@@ -289,8 +289,8 @@ export default {
     };
     
     // Store credentials for this email and map email to user
-    await env.USER_DATA.put(`email:${email}:credentials`, JSON.stringify(credentials));
-    await env.USER_DATA.put(`email:${email}:chatId`, chatId.toString());
+    await env['telegram-gmail'].put(`email:${email}:credentials`, JSON.stringify(credentials));
+    await env['telegram-gmail'].put(`email:${email}:chatId`, chatId.toString());
     
     // Notify user
     await this.sendTelegramMessage(
@@ -302,7 +302,7 @@ export default {
   
   // List all connected accounts for a user
   async listConnectedAccounts(chatId: number, env: Env): Promise<void> {
-    const userAccountsStr = await env.USER_DATA.get(`user:${chatId}:accounts`);
+    const userAccountsStr = await env['telegram-gmail'].get(`user:${chatId}:accounts`);
     
     if (!userAccountsStr || JSON.parse(userAccountsStr).length === 0) {
       await this.sendTelegramMessage(
@@ -323,7 +323,7 @@ export default {
   
   // Remove an account
   async removeAccount(chatId: number, email: string, env: Env): Promise<void> {
-    const userAccountsStr = await env.USER_DATA.get(`user:${chatId}:accounts`);
+    const userAccountsStr = await env['telegram-gmail'].get(`user:${chatId}:accounts`);
     
     if (!userAccountsStr) {
       await this.sendTelegramMessage(chatId, 'You have no connected accounts.', env);
@@ -343,11 +343,11 @@ export default {
     
     // Remove account from user's list
     accounts = accounts.filter((acc: string) => acc !== email);
-    await env.USER_DATA.put(`user:${chatId}:accounts`, JSON.stringify(accounts));
+    await env['telegram-gmail'].put(`user:${chatId}:accounts`, JSON.stringify(accounts));
     
     // Clean up the credentials and mapping
-    await env.USER_DATA.delete(`email:${email}:credentials`);
-    await env.USER_DATA.delete(`email:${email}:chatId`);
+    await env['telegram-gmail'].delete(`email:${email}:credentials`);
+    await env['telegram-gmail'].delete(`email:${email}:chatId`);
     
     await this.sendTelegramMessage(
       chatId,
@@ -387,7 +387,7 @@ export default {
     }
     
     // Get user chat ID for this email
-    const chatIdStr = await env.USER_DATA.get(`email:${email}:chatId`);
+    const chatIdStr = await env['telegram-gmail'].get(`email:${email}:chatId`);
     
     if (!chatIdStr) {
       return new Response('No user found for this email', { status: 404 });
@@ -396,7 +396,7 @@ export default {
     const chatId = parseInt(chatIdStr);
     
     // Get credentials for this email
-    const credentialsStr = await env.USER_DATA.get(`email:${email}:credentials`);
+    const credentialsStr = await env['telegram-gmail'].get(`email:${email}:credentials`);
     
     if (!credentialsStr) {
       return new Response('No credentials found for this email', { status: 404 });
@@ -417,7 +417,7 @@ export default {
         expiryDate: Date.now() + (newTokens.expires_in * 1000),
       };
       
-      await env.USER_DATA.put(`email:${email}:credentials`, JSON.stringify(updatedCredentials));
+      await env['telegram-gmail'].put(`email:${email}:credentials`, JSON.stringify(updatedCredentials));
     }
     
     // Get unread messages
@@ -596,7 +596,7 @@ export default {
   // Check all Gmail accounts for new emails (fallback for push notifications)
   async checkAllGmailAccounts(env: Env): Promise<void> {
     // Get all emails from KV (listing is limited, so this is simplified)
-    const listResult = await env.USER_DATA.list({ prefix: 'email:' });
+    const listResult = await env['telegram-gmail'].list({ prefix: 'email:' });
     
     const emailRegex = /email:(.+?):credentials/;
     
@@ -607,7 +607,7 @@ export default {
         const email = match[1];
         
         // Get user chat ID for this email
-        const chatIdStr = await env.USER_DATA.get(`email:${email}:chatId`);
+        const chatIdStr = await env['telegram-gmail'].get(`email:${email}:chatId`);
         
         if (!chatIdStr) {
           continue;
@@ -616,7 +616,7 @@ export default {
         const chatId = parseInt(chatIdStr);
         
         // Get credentials for this email
-        const credentialsStr = await env.USER_DATA.get(`email:${email}:credentials`);
+        const credentialsStr = await env['telegram-gmail'].get(`email:${email}:credentials`);
         
         if (!credentialsStr) {
           continue;
@@ -638,7 +638,7 @@ export default {
               expiryDate: Date.now() + (newTokens.expires_in * 1000),
             };
             
-            await env.USER_DATA.put(`email:${email}:credentials`, JSON.stringify(updatedCredentials));
+            await env['telegram-gmail'].put(`email:${email}:credentials`, JSON.stringify(updatedCredentials));
           } catch (error) {
             const errorMessage = isErrorWithMessage(error) ? error.message : 'An unknown error occurred';
             console.error(`Failed to refresh token for ${email}: ${errorMessage}`);
