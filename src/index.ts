@@ -14,6 +14,136 @@ import {
   TelegramWebhookInfo
 } from './types';
 
+// Common HTML templates
+const HTML_TEMPLATES = {
+  base: (content: string, title: string, color: string, buttonText: string, buttonUrl: string) => `
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #f8f9fa;
+          }
+          .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-sizing: border-box;
+          }
+          .button {
+            width: 100%;
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-top: 20px;
+            font-weight: bold;
+            text-align: center;
+            box-sizing: border-box;
+          }
+          .button:hover {
+            background-color: #0056b3;
+          }
+          .email {
+            font-weight: bold;
+            color: #007bff;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1 style="color: ${color}; text-align: center;">${title}</h1>
+          ${content}
+          <a href="${buttonUrl}" class="button">${buttonText}</a>
+        </div>
+      </body>
+    </html>
+  `,
+  success: (email: string, botUsername: string) => HTML_TEMPLATES.base(
+    `<p>Your Gmail account <span class="email">${email}</span> has been successfully connected to the Telegram bot.</p>
+     <p>You will now receive notifications for new emails in your Telegram chat.</p>`,
+    'Success!',
+    '#28a745',
+    'Return to Bot',
+    `https://t.me/${botUsername}`
+  ),
+  error: (message: string, botUsername: string) => HTML_TEMPLATES.base(
+    `<p>${message}</p>
+     <p>Please try again or contact support if the problem persists.</p>`,
+    'Error',
+    '#dc3545',
+    'Return to Bot',
+    `https://t.me/${botUsername}`
+  )
+};
+
+// Common API response handlers
+const API_HANDLERS = {
+  handleResponse: async (response: Response, errorPrefix: string) => {
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`${errorPrefix}: ${errorText}`);
+    }
+    return response.json();
+  },
+  handleTelegramResponse: async (response: Response) => {
+    const result = await API_HANDLERS.handleResponse(response, 'Telegram API error') as { ok: boolean; description?: string };
+    if (!result.ok) {
+      throw new Error(`Telegram API returned error: ${result.description || 'Unknown error'}`);
+    }
+    return result;
+  }
+};
+
+// Common message formatting
+const MESSAGE_FORMATTERS = {
+  cleanSnippet: (snippet: string) => {
+    const patterns = [
+      // Reply patterns
+      [/On.*wrote:.*$/s, ''],
+      [/On.*,.*wrote:.*$/s, ''],
+      // Email headers
+      [/From:.*\n.*\n.*\n.*\n.*\n.*$/s, ''],
+      [/Sent:.*\n.*\n.*\n.*\n.*\n.*$/s, ''],
+      [/Date:.*\n.*\n.*\n.*\n.*\n.*$/s, ''],
+      [/Subject:.*\n.*\n.*\n.*\n.*\n.*$/s, ''],
+      [/To:.*\n.*\n.*\n.*\n.*\n.*$/s, ''],
+      [/Cc:.*\n.*\n.*\n.*\n.*\n.*$/s, ''],
+      [/Bcc:.*\n.*\n.*\n.*\n.*\n.*$/s, ''],
+      // Signatures
+      [/--\s*\n.*$/s, ''],
+      [/Best regards,.*$/s, ''],
+      [/Regards,.*$/s, ''],
+      [/Thanks,.*$/s, ''],
+      [/Sincerely,.*$/s, ''],
+      // Separators
+      [/-{3,}.*$/s, ''],
+      [/_{3,}.*$/s, ''],
+      [/\*{3,}.*$/s, ''],
+      // HTML entities
+      [/&gt;/g, '>'],
+      [/&lt;/g, '<'],
+      [/&amp;/g, '&'],
+      [/&quot;/g, '"'],
+      [/&#39;/g, "'"],
+      [/&nbsp;/g, ' '],
+      // Whitespace
+      [/\s+/g, ' '],
+      [/\n{3,}/g, '\n\n']
+    ];
+
+    return patterns.reduce((text, [pattern, replacement]) => 
+      text.replace(pattern as RegExp, replacement as string), snippet).trim();
+  }
+};
+
 // Environment variables interface for Cloudflare Worker
 interface Env {
   // Telegram Bot Token from BotFather
@@ -29,6 +159,7 @@ interface Env {
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   GOOGLE_REDIRECT_URI: string;
+  TELEGRAM_BOT_USERNAME: string;
 }
 
 // Main worker handler
@@ -128,18 +259,47 @@ export default {
       case '/start':
         await this.sendTelegramMessage(
           chatId, 
-          'Welcome to Gmail Notification Bot! Use /add to connect your first Gmail account.', 
+          `👋 Welcome to Gmail Notifier Bot!\n\n` +
+          `I'll help you stay on top of your emails by sending instant notifications to Telegram.\n\n` +
+          `🔔 Features:\n` +
+          `• Real-time email notifications\n` +
+          `• Multiple Gmail account support\n` +
+          `• Secure OAuth2 authentication\n` +
+          `• Read-only access to your emails\n\n` +
+          `To get started, use /add to connect your first Gmail account.\n` +
+          `Need help? Use /help to see all available commands.`,
           env
         );
         break;
         
       case '/add':
-        // Generate OAuth URL
-        const authUrl = this.generateGoogleAuthUrl(chatId, env);
+        // Check if user already has accounts
+        const userAccountsStr = await env['telegram-gmail'].get(`user:${chatId}:accounts`);
+        const userAccounts = userAccountsStr ? JSON.parse(userAccountsStr) : [];
+
+        // Send welcome message with inline keyboard
+        const keyboard = {
+          inline_keyboard: [
+            [{
+              text: '🔐 Connect Gmail Account',
+              callback_data: 'start_auth'
+            }]
+          ]
+        };
+
         await this.sendTelegramMessage(
-          chatId, 
-          `Please authorize access to your Gmail by clicking this link: ${authUrl}`, 
-          env
+          chatId,
+          `📧 Gmail Notifier Setup\n\n` +
+          `I'll help you connect your Gmail account to receive instant notifications.\n\n` +
+          `🔒 Security & Privacy:\n` +
+          `• Uses official Google OAuth2\n` +
+          `• Read-only access to your emails\n` +
+          `• No email content is stored\n` +
+          `• End-to-end encrypted\n\n` +
+          `Click the button below to start the secure authorization process:`,
+          env,
+          'HTML',
+          keyboard
         );
         break;
         
@@ -162,11 +322,14 @@ export default {
       case '/help':
         await this.sendTelegramMessage(
           chatId,
-          'Available commands:\n' +
-          '/add - Connect a new Gmail account\n' +
-          '/list - Show all connected accounts\n' +
-          '/remove - Remove a connected account\n' +
-          '/help - Show this help message',
+          `📋 Gmail Notifier Commands\n\n` +
+          `Here are all the available commands:\n\n` +
+          `🔹 /start - Start the bot and get welcome message\n` +
+          `🔹 /add - Connect a new Gmail account\n` +
+          `🔹 /list - View all connected Gmail accounts\n` +
+          `🔹 /remove - Remove a connected Gmail account\n` +
+          `🔹 /help - Show this help message\n\n` +
+          `Need more help? Contact us at @mygmailsbot`,
           env
         );
         break;
@@ -174,7 +337,8 @@ export default {
       default:
         await this.sendTelegramMessage(
           chatId, 
-          'Unknown command. Type /help to see available commands.', 
+          `❌ Unknown command. Type /help to see all available commands.\n\n` +
+          `Or visit @mygmailsbot for more information.`,
           env
         );
     }
@@ -202,7 +366,13 @@ export default {
     const state = url.searchParams.get('state'); // Contains chat ID
     
     if (!code || !state) {
-      return new Response('Missing parameters', { status: 400 });
+      return new Response(
+        HTML_TEMPLATES.error('Missing required parameters. Please try again.', env.TELEGRAM_BOT_USERNAME),
+        {
+          headers: { 'Content-Type': 'text/html' },
+          status: 400
+        }
+      );
     }
     
     const chatId = parseInt(state);
@@ -217,20 +387,22 @@ export default {
       // Store credentials in KV
       await this.storeGmailCredentials(chatId, userInfo.email, tokens, env);
       
-      // Return success page
+      // Return success page with deep link
       return new Response(
-        `<html><body>
-          <h1>Success!</h1>
-          <p>Your Gmail account ${userInfo.email} has been connected to the Telegram bot.</p>
-          <p>You can close this window and return to Telegram.</p>
-        </body></html>`,
+        HTML_TEMPLATES.success(userInfo.email, env.TELEGRAM_BOT_USERNAME),
         {
           headers: { 'Content-Type': 'text/html' },
         }
       );
     } catch (error) {
       const errorMessage = isErrorWithMessage(error) ? error.message : 'An unknown error occurred';
-      return new Response(`Error: ${errorMessage}`, { status: 500 });
+      return new Response(
+        HTML_TEMPLATES.error(errorMessage, env.TELEGRAM_BOT_USERNAME),
+        {
+          headers: { 'Content-Type': 'text/html' },
+          status: 500
+        }
+      );
     }
   },
   
@@ -265,11 +437,7 @@ export default {
       }),
     });
     
-    if (!response.ok) {
-      throw new Error(`Failed to exchange code: ${await response.text()}`);
-    }
-    
-    return response.json();
+    return API_HANDLERS.handleResponse(response, 'Failed to exchange code');
   },
   
   // Get user email from Google
@@ -280,11 +448,7 @@ export default {
       },
     });
     
-    if (!response.ok) {
-      throw new Error(`Failed to get user email: ${await response.text()}`);
-    }
-    
-    const data = await response.json() as { emailAddress: string };
+    const data = await API_HANDLERS.handleResponse(response, 'Failed to get user email') as { emailAddress: string };
     if (!data.emailAddress) {
       throw new Error('Email address not found in response');
     }
@@ -407,7 +571,18 @@ export default {
       await this.answerCallbackQuery(callbackId, env);
       console.log('Callback query answered successfully');
       
-      if (data.startsWith('remove_')) {
+      if (data === 'start_auth') {
+        // Generate OAuth URL
+        const authUrl = this.generateGoogleAuthUrl(chatId, env);
+        await this.sendTelegramMessage(
+          chatId,
+          '🔐 Please click the link below to authorize access to your Gmail account:\n\n' +
+          `<a href="${authUrl}">Authorize with Google</a>\n\n` +
+          'After authorization, you will be redirected back to Telegram.',
+          env,
+          'HTML'
+        );
+      } else if (data.startsWith('remove_')) {
         const email = data.replace('remove_', '');
         console.log('Showing confirmation for email:', email);
         await this.confirmRemoveAccount(chatId, email, env);
@@ -452,12 +627,7 @@ export default {
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Failed to answer callback query:', errorText);
-      throw new Error(`Failed to answer callback query: ${errorText}`);
-    }
-    
+    await API_HANDLERS.handleTelegramResponse(response);
     console.log('Callback query answered successfully');
   },
 
@@ -513,9 +683,10 @@ export default {
     accounts = accounts.filter((acc: string) => acc !== email);
     await env['telegram-gmail'].put(`user:${chatId}:accounts`, JSON.stringify(accounts));
     
-    // Clean up the credentials and mapping
+    // Clean up the credentials, mapping, and lastMessageId
     await env['telegram-gmail'].delete(`email:${email}:credentials`);
     await env['telegram-gmail'].delete(`email:${email}:chatId`);
+    await env['telegram-gmail'].delete(`email:${email}:lastMessageId`);
     
     await this.sendTelegramMessage(
       chatId,
@@ -523,38 +694,7 @@ export default {
       env
     );
   },
-  
-  // Setup Gmail push notifications (watch) using service account
-  // async setupGmailPushNotifications(email: string, env: Env): Promise<void> {
-  //   const credentialsStr = await env['telegram-gmail'].get(`email:${email}:credentials`);
-  //   if (!credentialsStr) {
-  //     throw new Error('No credentials found for this email');
-  //   }
-    
-  //   const credentials: GmailCredentials = JSON.parse(credentialsStr);
-  //   const accessToken = credentials.accessToken;
-    
-  //   // Set up push notifications for this email
-  //   const response = await fetch('https://www.googleapis.com/gmail/v1/users/me/watch', {
-  //     method: 'POST',
-  //     headers: {
-  //       'Authorization': `Bearer ${accessToken}`,
-  //       'Content-Type': 'application/json',
-  //     },
-  //     body: JSON.stringify({
-  //       topicName: env.GOOGLE_TOPIC_NAME,
-  //       labelIds: ['INBOX'],
-  //     }),
-  //   });
-    
-  //   if (!response.ok) {
-  //     throw new Error(`Failed to set up push notifications: ${await response.text()}`);
-  //   }
-    
-  //   const data = await response.json() as { historyId: number };
-  //   // Store the history ID for future reference
-  //   await env['telegram-gmail'].put(`email:${email}:historyId`, data.historyId.toString());
-  // },
+
   
   // Handle Gmail push notifications
   async handleGmailPush(request: Request, env: Env): Promise<Response> {
@@ -630,11 +770,7 @@ export default {
       }),
     });
     
-    if (!response.ok) {
-      throw new Error(`Failed to refresh token: ${await response.text()}`);
-    }
-    
-    return response.json();
+    return API_HANDLERS.handleResponse(response, 'Failed to refresh token');
   },
   
   // Get unread messages
@@ -650,11 +786,7 @@ export default {
       }
     );
     
-    if (!response.ok) {
-      throw new Error(`Failed to get messages: ${await response.text()}`);
-    }
-    
-    const data = await response.json() as GmailMessagesResponse;
+    const data = await API_HANDLERS.handleResponse(response, 'Failed to get messages') as GmailMessagesResponse;
     const messages: EmailMessage[] = [];
     
     // Get message details
@@ -688,11 +820,7 @@ export default {
       }
     );
     
-    if (!response.ok) {
-      throw new Error(`Failed to get message details: ${await response.text()}`);
-    }
-    
-    const data = await response.json() as GmailMessageDetails;
+    const data = await API_HANDLERS.handleResponse(response, 'Failed to get message details') as GmailMessageDetails;
     
     const subject = data.payload.headers.find((h: { name: string; value: string }) => h.name === 'Subject')?.value || 'No Subject';
     const from = data.payload.headers.find((h: { name: string; value: string }) => h.name === 'From')?.value || 'Unknown Sender';
@@ -724,41 +852,7 @@ export default {
       const escapedTo = this.escapeHtml(message.to);
       const escapedFrom = this.escapeHtml(message.from);
       const escapedSubject = this.escapeHtml(message.subject);
-      
-      // Clean up the snippet by removing reply formatting and common email patterns
-      let cleanedSnippet = message.snippet
-        // Remove common reply patterns
-        .replace(/On.*wrote:.*$/s, '') // Remove "On ... wrote:" lines
-        .replace(/On.*,.*wrote:.*$/s, '') // Remove "On [date], [name] wrote:"
-        .replace(/From:.*\n.*\n.*\n.*\n.*\n.*$/s, '') // Remove forwarded email headers
-        .replace(/Sent:.*\n.*\n.*\n.*\n.*\n.*$/s, '') // Remove sent email headers
-        .replace(/Date:.*\n.*\n.*\n.*\n.*\n.*$/s, '') // Remove date headers
-        .replace(/Subject:.*\n.*\n.*\n.*\n.*\n.*$/s, '') // Remove subject headers
-        .replace(/To:.*\n.*\n.*\n.*\n.*\n.*$/s, '') // Remove to headers
-        .replace(/Cc:.*\n.*\n.*\n.*\n.*\n.*$/s, '') // Remove cc headers
-        .replace(/Bcc:.*\n.*\n.*\n.*\n.*\n.*$/s, '') // Remove bcc headers
-        // Remove common email signatures
-        .replace(/--\s*\n.*$/s, '') // Remove signatures after "--"
-        .replace(/Best regards,.*$/s, '') // Remove "Best regards" signatures
-        .replace(/Regards,.*$/s, '') // Remove "Regards" signatures
-        .replace(/Thanks,.*$/s, '') // Remove "Thanks" signatures
-        .replace(/Sincerely,.*$/s, '') // Remove "Sincerely" signatures
-        // Remove common email separators
-        .replace(/-{3,}.*$/s, '') // Remove horizontal lines
-        .replace(/_{3,}.*$/s, '') // Remove underscore lines
-        .replace(/\*{3,}.*$/s, '') // Remove asterisk lines
-        // Convert HTML entities back to their original characters
-        .replace(/&gt;/g, '>')
-        .replace(/&lt;/g, '<')
-        .replace(/&amp;/g, '&')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/&nbsp;/g, ' ')
-        // Remove excessive whitespace
-        .replace(/\s+/g, ' ')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
-      
+      const cleanedSnippet = MESSAGE_FORMATTERS.cleanSnippet(message.snippet);
       const escapedSnippet = this.escapeHtml(cleanedSnippet);
       const escapedLink = this.escapeHtml(message.link);
       
@@ -809,22 +903,7 @@ export default {
         body: JSON.stringify(params),
       });
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Telegram API error:', {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorText,
-          chatId,
-          textLength: text.length
-        });
-        throw new Error(`Failed to send Telegram message: ${errorText}`);
-      }
-
-      const result = await response.json() as { ok: boolean; description?: string };
-      if (!result.ok) {
-        throw new Error(`Telegram API returned error: ${result.description || 'Unknown error'}`);
-      }
+      await API_HANDLERS.handleTelegramResponse(response);
     } catch (error) {
       console.error('Error in sendTelegramMessage:', error);
       throw error;
@@ -837,11 +916,7 @@ export default {
       `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getWebhookInfo`
     );
     
-    if (!response.ok) {
-      throw new Error(`Failed to check webhook status: ${await response.text()}`);
-    }
-    
-    const result = await response.json() as TelegramWebhookInfo;
+    const result = await API_HANDLERS.handleTelegramResponse(response) as TelegramWebhookInfo;
     return result.ok && result.result.url !== '';
   },
   
@@ -864,7 +939,7 @@ export default {
       }
     );
     
-    const result = await response.json();
+    const result = await API_HANDLERS.handleTelegramResponse(response);
     
     return new Response(JSON.stringify(result), {
       headers: { 'Content-Type': 'application/json' },

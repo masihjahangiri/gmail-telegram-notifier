@@ -16,17 +16,9 @@ id = "024fa247c98b49efa73fb8aaa8bc21b9"
 crons = ["*/5 * * * *"]  # Run every 5 minutes
 
 [vars]
+TELEGRAM_BOT_USERNAME = "mygmailsbot"
 GOOGLE_CLIENT_ID = "1084242177961-7fsaufibk1ttjmiikvcmmsrstoi10jka.apps.googleusercontent.com"
 GOOGLE_REDIRECT_URI = "https://gmail-telegram-notifier.masihjahan.workers.dev/auth/google/callback"
-# GOOGLE_TOPIC_NAME = "projects/gmail-telegram-notifier-456103/topics/telegram-gmail"
-
-# # For local development
-# [vars.dev]
-# GOOGLE_TOPIC_NAME = "projects/gmail-telegram-notifier-456103/topics/telegram-gmail"
-
-# # For production
-# [vars.production]
-# GOOGLE_TOPIC_NAME = "projects/gmail-telegram-notifier-456103/topics/telegram-gmail"
 
 # Secrets that should be set using wrangler secret put
 # note: WEBHOOK_SECRET is a random string, so you can generate it by running this command: openssl rand -base64 32
@@ -34,6 +26,3 @@ GOOGLE_REDIRECT_URI = "https://gmail-telegram-notifier.masihjahan.workers.dev/au
 # wrangler secret put TELEGRAM_BOT_TOKEN
 # wrangler secret put WEBHOOK_SECRET
 # wrangler secret put GOOGLE_CLIENT_SECRET
-
-# cat service-account.json | base64
-# wrangler secret put GOOGLE_SERVICE_ACCOUNT_KEY
