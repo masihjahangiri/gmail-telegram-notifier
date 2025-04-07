@@ -15,3 +15,51 @@ export interface GmailCredentials {
   refreshToken: string;
   expiryDate: number;
 }
+
+// Telegram Update types
+export interface TelegramUpdate {
+  message?: TelegramMessage;
+}
+
+export interface TelegramMessage {
+  chat: {
+    id: number;
+  };
+  text: string;
+}
+
+// Gmail API Response types
+export interface GmailMessagesResponse {
+  messages?: Array<{
+    id: string;
+  }>;
+}
+
+export interface GmailMessageDetails {
+  payload: {
+    headers: Array<{
+      name: string;
+      value: string;
+    }>;
+  };
+  snippet: string;
+}
+
+export interface GmailPushNotification {
+  emailAddress: string;
+}
+
+// Error type for better error handling
+export interface ErrorWithMessage {
+  message: string;
+}
+
+// Type guard for ErrorWithMessage
+export function isErrorWithMessage(error: unknown): error is ErrorWithMessage {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    typeof (error as Record<string, unknown>).message === 'string'
+  );
+}

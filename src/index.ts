@@ -1,7 +1,17 @@
 // Gmail Notification Telegram Bot for Cloudflare Workers
 // This bot monitors multiple Gmail accounts and sends notifications for new emails via Telegram
 
-import { EmailMessage, GmailCredentials } from './types';
+import { 
+  EmailMessage, 
+  GmailCredentials, 
+  TelegramUpdate, 
+  TelegramMessage,
+  GmailMessagesResponse,
+  GmailMessageDetails,
+  GmailPushNotification,
+  ErrorWithMessage,
+  isErrorWithMessage
+} from './types';
 
 // Environment variables interface for Cloudflare Worker
 interface Env {
@@ -51,7 +61,7 @@ export default {
   
   // Process Telegram webhook updates
   async handleTelegramWebhook(request: Request, env: Env): Promise<Response> {
-    const update = await request.json();
+    const update = await request.json() as TelegramUpdate;
     
     // Check if this is a message
     if (!update.message) {
@@ -189,7 +199,8 @@ export default {
         }
       );
     } catch (error) {
-      return new Response(`Error: ${error.message}`, { status: 500 });
+      const errorMessage = isErrorWithMessage(error) ? error.message : 'An unknown error occurred';
+      return new Response(`Error: ${errorMessage}`, { status: 500 });
     }
   },
   
@@ -352,7 +363,7 @@ export default {
   
   // Handle Gmail push notifications
   async handleGmailPush(request: Request, env: Env): Promise<Response> {
-    const data = await request.json();
+    const data = await request.json() as GmailPushNotification;
     
     // Extract email from notification data
     const email = data.emailAddress;
@@ -448,7 +459,7 @@ export default {
       throw new Error(`Failed to get messages: ${await response.text()}`);
     }
     
-    const data = await response.json();
+    const data = await response.json() as GmailMessagesResponse;
     const messages: EmailMessage[] = [];
     
     // Get message details
@@ -477,10 +488,10 @@ export default {
       throw new Error(`Failed to get message details: ${await response.text()}`);
     }
     
-    const data = await response.json();
+    const data = await response.json() as GmailMessageDetails;
     
-    const subject = data.payload.headers.find(h => h.name === 'Subject')?.value || 'No Subject';
-    const from = data.payload.headers.find(h => h.name === 'From')?.value || 'Unknown Sender';
+    const subject = data.payload.headers.find((h: { name: string; value: string }) => h.name === 'Subject')?.value || 'No Subject';
+    const from = data.payload.headers.find((h: { name: string; value: string }) => h.name === 'From')?.value || 'Unknown Sender';
     
     return {
       id: messageId,
@@ -604,7 +615,8 @@ export default {
             
             await env.USER_DATA.put(`email:${email}:credentials`, JSON.stringify(updatedCredentials));
           } catch (error) {
-            console.error(`Failed to refresh token for ${email}: ${error.message}`);
+            const errorMessage = isErrorWithMessage(error) ? error.message : 'An unknown error occurred';
+            console.error(`Failed to refresh token for ${email}: ${errorMessage}`);
             continue;
           }
         }
@@ -618,7 +630,8 @@ export default {
             await this.sendEmailNotification(chatId, email, message, env);
           }
         } catch (error) {
-          console.error(`Failed to check emails for ${email}: ${error.message}`);
+          const errorMessage = isErrorWithMessage(error) ? error.message : 'An unknown error occurred';
+          console.error(`Failed to check emails for ${email}: ${errorMessage}`);
         }
       }
     }
