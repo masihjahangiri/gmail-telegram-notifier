@@ -1047,7 +1047,7 @@ async function serveStaticPage(path: string, env: Env): Promise<Response> {
     // Convert GitHub repository URL to raw content URL
     const rawUrl = env.GITHUB_REPO_URL
       .replace('github.com', 'raw.githubusercontent.com')
-      .replace(/\/$/, `/main/src/pages${path}`);
+      + `/main/src/pages${path}`;
     
     const file = await fetch(rawUrl);
     if (!file.ok) {
