@@ -846,25 +846,24 @@ export default {
       .replace(/'/g, "&#039;");
   },
   
-  // Send email notification via Telegram
+  // Send improved email notification via Telegram
   async sendEmailNotification(chatId: number, email: string, message: EmailMessage, env: Env): Promise<void> {
     try {
-      const escapedTo = this.escapeHtml(message.to);
-      const escapedFrom = this.escapeHtml(message.from);
-      const escapedSubject = this.escapeHtml(message.subject);
-      const cleanedSnippet = MESSAGE_FORMATTERS.cleanSnippet(message.snippet);
-      const escapedSnippet = this.escapeHtml(cleanedSnippet);
-      const escapedLink = this.escapeHtml(message.link);
-      
-      const text = `📧 New email in <b>${escapedTo}</b>\n` +
-                   `From: <b>${escapedFrom}</b>\n` +
-                   `Subject: <b>${escapedSubject}</b>\n\n` +
-                   `${escapedSnippet}...\n\n` +
-                   `<a href="${escapedLink}">Open in Gmail</a>`;
-      
-      await this.sendTelegramMessage(chatId, text, env, 'HTML');
+      const format = (str: string) => this.escapeHtml(str);
+
+      const snippet = MESSAGE_FORMATTERS.cleanSnippet(message.snippet).slice(0, 200);
+
+      const notificationMessage =
+        `📧 <b>New Email Received</b>\n` +
+        `📬 <b>Inbox:</b> ${format(message.to)}\n` +
+        `👤 <b>From:</b> ${format(message.from)}\n` +
+        `📝 <b>Subject:</b> ${format(message.subject)}\n\n` +
+        `💬 ${format(snippet)}${message.snippet.length > 200 ? '…' : ''}\n\n` +
+        `🔗 <a href="${format(message.link)}">Open Email</a>`;
+
+      await this.sendTelegramMessage(chatId, notificationMessage, env, 'HTML');
     } catch (error) {
-      console.error(`Failed to send email notification for ${email} to chat ${chatId}:`, error);
+      console.error(`🔴 Error sending email notification to ${chatId} for email ${email}:`, error);
       throw error;
     }
   },
