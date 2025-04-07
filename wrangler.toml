@@ -1,9 +1,17 @@
-name = "gmail-telegram-notifier"
+name = "gmail-telegram-bot"
 main = "src/index.ts"
-compatibility_date = "2024-01-01"
+compatibility_date = "2023-05-18"
+
+# KV Namespace for storing user data and Gmail credentials
+kv_namespaces = [
+  { binding = "USER_DATA", id = "YOUR_KV_NAMESPACE_ID" }
+]
+
+# Scheduled job to check emails periodically (as backup for push notifications)
+[triggers]
+crons = ["*/30 * * * *"]  # Run every 30 minutes
 
 [vars]
 # These will be overridden by secrets
-TELEGRAM_TOKEN = ""
-TELEGRAM_CHAT_ID = ""
-ACCESS_KEY = "" 
+TELEGRAM_BOT_TOKEN = "7920854064:AAGjdt4D8loaRKPPX7FFAiUwm9PuCskWfHQ"
+WEBHOOK_SECRET
