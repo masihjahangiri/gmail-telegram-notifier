@@ -1,99 +1,81 @@
-# 📬 Gmail Telegram Notifier Bot
+# Gmail Telegram Notifier
 
-[![Telegram Bot](https://img.shields.io/badge/Telegram-Bot-blue.svg)](https://t.me/mygmailsbot)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+Cloudflare Workers application that delivers real-time Gmail notifications to Telegram. Connect multiple Gmail accounts and receive instant alerts when new emails arrive.
 
-Stay instantly connected to all your Gmail accounts—right from Telegram.  
-With **Gmail Telegram Notifier Bot**, you'll receive real-time alerts for new emails, no matter which inbox they land in.
+Built as a serverless solution on Cloudflare Workers with KV storage. No servers to manage, no recurring infrastructure cost beyond the free tier.
 
-> 💡 **Now with seamless multi-account support** – handle all your Gmail inboxes in one place, effortlessly.
+## How It Works
 
-## 🔥 Features You'll Love
+1. Add your Gmail accounts via the Telegram bot using OAuth2 (read-only access)
+2. Gmail sends push notifications to the Worker via webhook
+3. The Worker formats the email summary and sends it to your Telegram chat
+4. A cron trigger polls every 5 minutes as a fallback for missed webhooks
 
-- 🔄 **Multi-Account Support**  
-  Easily connect and monitor multiple Gmail inboxes.
+## Features
 
-- 📥 **Real-Time Email Alerts**  
-  Receive instant Telegram notifications the moment an email arrives.
+- **Multi-account support** -- Connect and monitor multiple Gmail accounts from one Telegram bot
+- **OAuth2 read-only access** -- Only requests permission to read email metadata, not modify anything
+- **Webhook-first delivery** -- Gmail push notifications for near-instant alerts
+- **Cron fallback** -- 5-minute polling ensures no emails are missed if webhooks fail
+- **Cloudflare KV storage** -- Account data and tokens stored in edge KV, no external database needed
 
-- 🔒 **Security-First Design**  
-  OAuth2 authentication with strict **read-only** Gmail access.
+## Bot Commands
 
-- ⚙️ **Intuitive Command System**  
-  Use simple bot commands like `/add`, `/list`, and `/remove` to manage accounts.
+| Command | Description |
+|---|---|
+| `/start` | Initialize the bot |
+| `/add` | Connect a new Gmail account via OAuth2 |
+| `/list` | Show connected accounts |
+| `/remove` | Disconnect a Gmail account |
+| `/help` | Show available commands |
 
-- 📱 **Cross-Platform Compatibility**  
-  Works perfectly on **Android**, **iOS**, **Desktop**, and **Web Telegram** clients.
+## Deployment
 
-## 🚀 Getting Started
+### Prerequisites
 
-1. Start the bot 👉 [@mygmailsbot](https://t.me/mygmailsbot)  
-2. Type `/add` to connect your Gmail account  
-3. Securely authenticate via Google  
-4. Get real-time email notifications in Telegram  
-5. Add more accounts anytime with `/add`
+- Cloudflare account with Workers enabled
+- Telegram bot token (from [@BotFather](https://t.me/BotFather))
+- Google Cloud project with Gmail API enabled and OAuth2 credentials
 
-## 💡 Bot Commands
+### Setup
 
-| Command     | Description                          |
-|-------------|--------------------------------------|
-| `/start`    | Get a welcome message and intro      |
-| `/add`      | Connect a new Gmail account          |
-| `/list`     | Show connected Gmail accounts        |
-| `/remove`   | Disconnect an existing Gmail account |
-| `/help`     | Display all available commands       |
+1. Clone and install dependencies:
 
-## 🔐 Security & Privacy
+```bash
+git clone https://github.com/masihjahangiri/gmail-telegram-notifier.git
+cd gmail-telegram-notifier
+npm install
+```
 
-- ✅ Official **Google OAuth2** authentication  
-- ✅ **Read-only** Gmail access (no email modifications)  
-- ✅ No data stored on our servers  
-- ✅ Secure token storage with auto-refresh  
-- ✅ All communication is **end-to-end encrypted**
+2. Configure `wrangler.toml` with your Google OAuth client ID and redirect URI.
 
-## 🧠 How It Works
+3. Set secrets:
 
-1. You grant the bot read-only access to your Gmail  
-2. It watches for new emails via the Gmail API  
-3. You receive Telegram alerts instantly  
-4. Tap a notification to open the email in Gmail
+```bash
+npx wrangler secret put TELEGRAM_BOT_TOKEN
+npx wrangler secret put WEBHOOK_SECRET
+npx wrangler secret put GOOGLE_CLIENT_SECRET
+```
 
-## 🖥 Supported Platforms
+4. Create the KV namespace:
 
-- Android  
-- iOS  
-- Windows / macOS  
-- Telegram Web
+```bash
+npx wrangler kv:namespace create telegram-gmail
+```
 
-## 🧰 Tech Stack
+5. Deploy:
 
-- **Language:** TypeScript  
-- **Hosting:** Cloudflare Workers  
-- **APIs:** Gmail API, Telegram Bot API  
-- **Architecture:** Secure OAuth2 flow, token refresh, low-latency event pipeline
+```bash
+npm run deploy
+```
 
-## ⚡ Performance
+## Tech Stack
 
-- 🚀 Real-time Telegram push notifications  
-- 🔁 5-minute polling fallback  
-- ✅ High reliability & uptime  
-- 🧠 Optimized for minimal latency
+- TypeScript on Cloudflare Workers
+- Cloudflare KV for persistent storage
+- Gmail API with OAuth2 and push notifications
+- Telegram Bot API
 
-## 🤝 Contribute
+## License
 
-We welcome contributions!
-
-- Fork the repo and open a PR  
-- Submit [issues](https://github.com/masihjahangiri/gmail-telegram-notifier/issues) for bugs & feature requests  
-- Got ideas? Let’s improve the bot together!
-
-## 📄 License
-
-MIT License. See [LICENSE](./LICENSE) for full terms.
-
-## 💬 Support
-
-Need help?  
-Open an [issue on GitHub](https://github.com/masihjahangiri/gmail-telegram-notifier/issues) — we’re happy to help!
-
-Made with ❤️ by [Masih Jahangiri](https://masihjahangiri.com)
+MIT
